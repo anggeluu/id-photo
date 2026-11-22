@@ -19,7 +19,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 14px 12px 175px 12px;
+    padding: 14px 12px 195px 12px;
     gap: 10px;
     width: 100%;
     min-height: 100vh;
@@ -354,6 +354,42 @@
     gap: 9px;
   }
 
+  /* 사진 선택 시 나타나는 좌우/상하 반전 미니 바 */
+  .flip-bar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed #e5e7eb;
+    font-size: 12px;
+    font-weight: 700;
+    color: #2563eb;
+  }
+  .flip-bar.open { display: flex; }
+  .flip-btns {
+    display: flex;
+    gap: 6px;
+  }
+  .btn-flip {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+    padding: 5px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .btn-flip.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+
   .label-editor {
     display: none;
     grid-template-columns: 1fr 1fr;
@@ -526,6 +562,15 @@
 
 <div class="bottom-dock">
   <div class="controls">
+    <!-- 사진 선택 시 나타나는 좌우/상하 반전 버튼 -->
+    <div class="flip-bar" id="flipBar">
+      <span>선택한 사진 반전</span>
+      <div class="flip-btns">
+        <button type="button" class="btn-flip" id="btnFlipX" onclick="toggleFlip('x')">⇄ 좌우반전</button>
+        <button type="button" class="btn-flip" id="btnFlipY" onclick="toggleFlip('y')">⇅ 상하반전</button>
+      </div>
+    </div>
+
     <div class="label-editor" id="labelEditor">
       <input type="text" data-cap="1" value="X 너무 가깝다">
       <input type="text" data-cap="2" value="X 너무 멀다">
@@ -563,7 +608,7 @@
 
     <div class="bottom-action-row">
       <div class="tip-mini">
-        <b>터치:</b> 사진 추가·선택 · <b>드래그:</b> 이동 · <b>상단 동그라미:</b> 회전(45° 스냅)<br>
+        <b>터치:</b> 사진 선택(반전·회전) · <b>드래그:</b> 이동 · <b>동그라미:</b> 회전(45° 스냅)<br>
         <b>두 손가락/휠:</b> 확대·축소 · <b>더블터치:</b> 사진 교체
       </div>
       <button class="btn-save" onclick="exportImage()">↓ 고화질 PNG 저장</button>
@@ -645,7 +690,6 @@
       var dataUrl = ev.target.result;
       applyBgData(dataUrl);
 
-      // 현재 페이지의 원본 HTML 소스를 안전하게 불러와 EMBEDDED_BG 값만 정확히 치환
       var xhr = new XMLHttpRequest();
       xhr.open('GET', window.location.href, true);
       xhr.onload = function() {
@@ -740,6 +784,31 @@
       el.classList.toggle('selected', el.dataset.slot === String(id));
     });
     updateSelectionBox();
+    updateFlipBar();
+  }
+
+  function updateFlipBar() {
+    var bar = document.getElementById('flipBar');
+    if (selectedSlotId !== null && slotStates[selectedSlotId] && slotStates[selectedSlotId].img) {
+      var st = slotStates[selectedSlotId];
+      bar.classList.add('open');
+      document.getElementById('btnFlipX').classList.toggle('active', !!st.flipX);
+      document.getElementById('btnFlipY').classList.toggle('active', !!st.flipY);
+    } else {
+      bar.classList.remove('open');
+    }
+  }
+
+  function toggleFlip(axis) {
+    if (selectedSlotId === null || !slotStates[selectedSlotId] || !slotStates[selectedSlotId].img) return;
+    var st = slotStates[selectedSlotId];
+    if (axis === 'x') {
+      st.flipX = !st.flipX;
+    } else if (axis === 'y') {
+      st.flipY = !st.flipY;
+    }
+    updateTransform(selectedSlotId);
+    updateFlipBar();
   }
 
   function updateSelectionBox() {
@@ -843,7 +912,7 @@
 
   document.querySelectorAll('.photo-slot').forEach(function(slot) {
     var id = slot.dataset.slot;
-    slotStates[id] = { x: 0, y: 0, scale: 1, rot: 0, img: null };
+    slotStates[id] = { x: 0, y: 0, scale: 1, rot: 0, flipX: false, flipY: false, img: null };
 
     slot.addEventListener('click', function() {
       if (!slotStates[id].img) {
@@ -904,7 +973,7 @@
         var slotW = activeSlot.clientWidth;
         var slotH = activeSlot.clientHeight;
         var fitScale = Math.max(slotW / img.naturalWidth, slotH / img.naturalHeight);
-        slotStates[id] = { x: 0, y: 0, scale: fitScale, rot: 0, img: img, vLine: vLine, hLine: hLine };
+        slotStates[id] = { x: 0, y: 0, scale: fitScale, rot: 0, flipX: false, flipY: false, img: img, vLine: vLine, hLine: hLine };
         updateTransform(id);
         enableDragAndPinch(img, activeSlot, id);
         selectSlot(id);
@@ -919,7 +988,9 @@
     var st = slotStates[id];
     if (!st.img) return;
     var rot = st.rot || 0;
-    st.img.style.transform = 'translate(' + st.x + 'px, ' + st.y + 'px) rotate(' + rot + 'deg) scale(' + st.scale + ')';
+    var sx = st.scale * (st.flipX ? -1 : 1);
+    var sy = st.scale * (st.flipY ? -1 : 1);
+    st.img.style.transform = 'translate(' + st.x + 'px, ' + st.y + 'px) rotate(' + rot + 'deg) scale(' + sx + ', ' + sy + ')';
     if (String(selectedSlotId) === String(id)) {
       updateSelectionBox();
     }
@@ -1128,6 +1199,7 @@
 
         ctx.translate(centerX, centerY);
         ctx.rotate(rad);
+        ctx.scale(st.flipX ? -1 : 1, st.flipY ? -1 : 1);
         ctx.drawImage(st.img, -iw / 2, -ih / 2, iw, ih);
       }
       ctx.restore();
